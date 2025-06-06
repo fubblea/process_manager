@@ -74,7 +74,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with: { path: dist }
 
-      - name: 🏷  Create/reuse git tag
+      - name: Git tag
         env: { VERSION: ${{ needs.build.outputs.version }} }
         uses: actions/github-script@v7
         with:
