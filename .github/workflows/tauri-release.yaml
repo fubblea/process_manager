@@ -1,11 +1,17 @@
-# .github/workflows/tauri-release.yml
 name: Build & Release Tauri
-on: [push, workflow_dispatch]
+
+on:
+  push:
+    branches: [main] # change if you release from another branch
+  workflow_dispatch: # manual “Run workflow” button
 
 env:
   NODE_VERSION: 20
   RUST_TOOLCHAIN: stable
 
+# ──────────────────────────────────────────────────────────────────────────────
+# 1️⃣  Build on all three OSes
+# ──────────────────────────────────────────────────────────────────────────────
 jobs:
   build:
     runs-on: ${{ matrix.os }}
@@ -14,80 +20,105 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
 
+    # expose the package.json version to the next job
     outputs:
       version: ${{ steps.pkg_ver.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      # ---------- Linux runtime libraries ----------
-      - name: 🔧 Install Linux system dependencies
+      # ---- Linux-only system libraries that Tauri/Wry expect ----
+      - name: Install Linux system dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt update
           sudo apt install -y \
-            libwebkit2gtk-4.1-dev \
             build-essential curl wget file \
-            libxdo-dev libssl-dev \
+            libssl-dev libxdo-dev \
+            libwebkit2gtk-4.1-dev \
             libgtk-3-dev libglib2.0-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev
-          # the list above follows Tauri's official Debian/Ubuntu prerequisites :contentReference[oaicite:0]{index=0}
 
-      - name: 🧰 Set up Node
+      - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: 🦀 Set up Rust
+      - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
 
-      - name: 📦 Install JS deps
+      - name: Install JS dependencies
         run: npm ci
 
-      # ---------- Cross-shell safe version extraction ----------
-      - name: 🏷  Read version from package.json
+      # ---- cross‑shell version extraction (works on Windows too) ----
+      - name: Get version from package.json
         id: pkg_ver
-        shell: bash            # works on Windows because Git-for-Windows Bash is pre-installed
+        shell: bash
         run: |
           echo "version=$(node -p \"require('./package.json').version\")" >> "$GITHUB_OUTPUT"
-          # the pattern node -p require('./package.json').version is known-good on every shell :contentReference[oaicite:1]{index=1}
 
-      - name: 🔨 Build Tauri bundle
+      - name: Build Tauri bundles
         run: npm run tauri build
 
-      - name: 📤  Upload bundle as artifact
+      # ---- version‑tagged artifact names ----
+      - name: Upload bundle as artifact
         uses: actions/upload-artifact@v4
         with:
-          # ==> tauri‑1.4.2‑windows, tauri‑1.4.2‑macos, tauri‑1.4.2‑ubuntu …
+          # e.g. tauri-1.4.2-windows
           name: tauri-${{ steps.pkg_ver.outputs.version }}-${{ matrix.os }}
-          path: src-tauri/target/release/bundle/**/*
+          path: |
+            src-tauri/target/release/bundle/**/*
 
+  # ──────────────────────────────────────────────────────────────────────────────
+  # 2️⃣  Create (or reuse) the git tag & publish a GitHub Release
+  # ──────────────────────────────────────────────────────────────────────────────
   release:
     needs: build
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/download-artifact@v4
-        with: { path: dist }
+      - name: Checkout repository
+        uses: actions/checkout@v4 # needed for github‑script tagging
 
-      - name: Git tag
-        env: { VERSION: ${{ needs.build.outputs.version }} }
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist # everything ends up under dist/**
+
+      - name: Create or update git tag
         uses: actions/github-script@v7
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
         with:
           script: |
             const tag = `v${process.env.VERSION}`;
             const { owner, repo } = context.repo;
-            const refs = await github.rest.git.listMatchingRefs({ owner, repo, ref: `tags/${tag}` });
-            if (refs.data.length === 0) {
-              await github.rest.git.createRef({ owner, repo, ref: `refs/tags/${tag}`, sha: context.sha });
-              core.info(`Created tag ${tag}`);
-            } else core.info(`Tag ${tag} already exists`);
+            const sha = context.sha;
 
-      - name: 🚀 Publish GitHub release
+            const existing = await github.rest.git.listMatchingRefs({
+              owner,
+              repo,
+              ref: `tags/${tag}`
+            });
+
+            if (existing.data.length === 0) {
+              await github.rest.git.createRef({
+                owner,
+                repo,
+                ref: `refs/tags/${tag}`,
+                sha
+              });
+              core.info(`✅ Created tag ${tag}`);
+            } else {
+              core.info(`ℹ️ Tag ${tag} already exists`);
+            }
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.build.outputs.version }}
