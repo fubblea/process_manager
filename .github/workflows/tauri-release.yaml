@@ -102,7 +102,12 @@ jobs:
           name: tauri-${{ steps.pkg_ver.outputs.version }}-${{ matrix.os }}
           if-no-files-found: error
           path: |
-            src-tauri/target/release/bundle/**/process_manager*
+            src-tauri/target/release/bundle/**/process_manager*.dmg
+            src-tauri/target/release/bundle/**/process_manager*.deb
+            src-tauri/target/release/bundle/**/process_manager*.rpm
+            src-tauri/target/release/bundle/**/process_manager*.AppImage
+            src-tauri/target/release/bundle/**/process_manager*.exe
+            src-tauri/target/release/bundle/**/process_manager*.msi
 
   # This is there to make it easy to set required builds in GitHub settings
   build-pass:
