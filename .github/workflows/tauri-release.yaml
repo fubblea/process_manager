@@ -101,7 +101,7 @@ jobs:
           # e.g. tauri-1.4.2-windows
           name: tauri-${{ steps.pkg_ver.outputs.version }}-${{ matrix.os }}
           path: |
-            src-tauri/target/release/bundle/**/*
+            src-tauri/target/release/bundle/**/process_manager*${{ steps.pkg_ver.outputs.version }}*
 
   # This is there to make it easy to set required builds in GitHub settings
   build-pass:
