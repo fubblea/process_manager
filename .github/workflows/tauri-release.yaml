@@ -60,7 +60,7 @@ jobs:
         id: pkg_ver
         shell: bash
         run: |
-          echo "version=$(node -p \"require('./package.json').version\")" >> "$GITHUB_OUTPUT"
+          echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
       - name: Build Tauri bundles
         run: npm run tauri build
